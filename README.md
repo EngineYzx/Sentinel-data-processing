@@ -60,8 +60,8 @@ for train_index, test_index in stratified_split.split(x, y):
     train_label, test_label = y.iloc[train_index], y.iloc[test_index]
 classifier = RandomForestClassifier(n_estimators=300, max_depth=30, bootstrap=True, max_features='sqrt')
 classifier.fit(train_data, train_label)
-print("训练集准确度:", classifier.score(train_data, train_label))
-print("测试集准确度:", classifier.score(test_data, test_label))
+print("Training set accuracy:", classifier.score(train_data, train_label))
+print("Test Set Accuracy:", classifier.score(test_data, test_label))
 y_pred = classifier.predict(test_data)
 y_test = test_label
 cm = confusion_matrix(y_test, y_pred)
