@@ -105,7 +105,7 @@ def pred_model(tif_path, model, shp_path):
     for r in range(int(row_h)):
         for c in range(int(col_w)):
             ts += 1
-            print("总块数：" + str(int(row_h) * int(col_w)) + ",现在是第：" + str(ts) + "块")
+            print("TOTAL：" + str(int(row_h) * int(col_w)) + ",NOW：" + str(ts) + "块")
             x_block, y_block = block_n, block_n
             if c == int(col_w) - 1:
                 x_block = im_width - c * block_n
