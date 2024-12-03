@@ -1,0 +1,159 @@
+# Informal-Settlementssewith-S1-2-Data
+GEE platform to process sentinel data &amp; python to process extracted data
+#GEE platform :
+https://code.earthengine.google.com/67dbe9f4a4f6cd549cb5854c43953f12
+**************************************************************
+#python platform :
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from scipy.stats import spearmanr
+from scipy.cluster import hierarchy
+import os
+df = pd.read_csv('E:/data/csv_data/M_2022_Output.csv')
+X = df.iloc[:, 1:].values  
+y = df['Landcover'].values  
+# Step 1: Calculate Feature Importance Using Random Forests
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X, y)
+# Access to feature significance
+feature_importances = clf.feature_importances_
+top_100_features_names = df.columns[1:][np.argsort(feature_importances)[::-1][:100]]
+top_100_features = X[:, np.argsort(feature_importances)[::-1][:100]]
+correlation_matrix, _ = spearmanr(top_100_features, axis=0)
+clusters = hierarchy.linkage(correlation_matrix, method='complete')
+cutree = hierarchy.cut_tree(clusters, height=1)
+selected_features = []
+selected_importances = []
+for cluster_id in np.unique(cutree):
+    cluster_indices = np.where(cutree == cluster_id)[0]
+    best_feature_index = cluster_indices[np.argmax(feature_importances[np.argsort(feature_importances)[::-1][:100]][cluster_indices])]
+    best_feature_name = top_100_features_names[best_feature_index]
+    selected_features.append(best_feature_name)
+    selected_importances.append(feature_importances[np.argsort(feature_importances)[::-1][:100]][best_feature_index])
+final_features_df = pd.DataFrame({
+    'Feature': selected_features,
+    'Importance': selected_importances
+}).sort_values(by='Importance', ascending=False)
+print(final_features_df)
+print("Final choice of feature name:", selected_features)
+************************************************************************
+#For Random forst model 
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix, recall_score, f1_score, cohen_kappa_score, precision_score, classification_report, accuracy_score
+import pickle
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn import metrics
+#path = r"E:/DL_MC_05month_data/Dhaka_DL_RF_data/data_merge_Dhaka.csv"
+path = r"E:/DL_MC_05month_data/mumbai/mumbai_2017/mumbai_data_2017_band.csv"
+SavePath = r"E:/DL_MC_05month_data/mumbai/mumbai_2017/feaCol_Mumbai_result_2017.pickle"
+data = pd.read_csv(path)
+bands_name = ['X1', 'X2', 'X3', 'X4', 'X5']
+x = data[bands_name]
+y = data['Landcover']
+stratified_split = StratifiedShuffleSplit(n_splits=1, test_size=0.3, random_state=1)
+
+for train_index, test_index in stratified_split.split(x, y):
+    train_data, test_data = x.iloc[train_index], x.iloc[test_index]
+    train_label, test_label = y.iloc[train_index], y.iloc[test_index]
+classifier = RandomForestClassifier(n_estimators=300, max_depth=30, bootstrap=True, max_features='sqrt')
+classifier.fit(train_data, train_label)
+print("训练集准确度:", classifier.score(train_data, train_label))
+print("测试集准确度:", classifier.score(test_data, test_label))
+y_pred = classifier.predict(test_data)
+y_test = test_label
+cm = confusion_matrix(y_test, y_pred)
+recall_score_value = recall_score(y_test, y_pred, average='micro')
+f1_score_value = f1_score(y_test, y_pred, average='weighted')
+kappa_value = cohen_kappa_score(y_test, y_pred)
+precision_score_value = precision_score(y_test, y_pred, average='weighted')
+print('classification_report\n', classification_report(y_true=y_test, y_pred=y_pred))
+print('confusion_matrix\n', cm)
+print('accuracy_score\n', accuracy_score(y_test, y_pred))
+print('recall_score\n', recall_score_value)
+print('precision_score\n', precision_score_value)
+print('f1_score\n', f1_score_value)
+print('kappa\n', kappa_value)
+with open(SavePath, "wb") as file:
+    pickle.dump(classifier, file)
+
+#
+import numpy as np
+from osgeo import gdal, ogr
+def pred_model(tif_path, model, shp_path):
+    dataset = gdal.Open(tif_path)
+    im_width = dataset.RasterXSize
+    im_height = dataset.RasterYSize
+    ori_bands = dataset.RasterCount
+    im_geotrans = dataset.GetGeoTransform()  
+    im_proj = dataset.GetProjection()  
+    block_n = 1024
+    row_h = np.ceil(im_height / block_n)
+    col_w = np.ceil(im_width / block_n)
+    print(im_height, im_width, im_height * im_width)
+    lab_mats = np.full((im_height, im_width), np.nan)
+    shp_dataset = ogr.Open(shp_path)
+    shp_layer = shp_dataset.GetLayer()
+    mask_ds = gdal.GetDriverByName('MEM').Create('', im_width, im_height, 1, gdal.GDT_Byte)
+    mask_ds.SetProjection(im_proj)
+    mask_ds.SetGeoTransform(im_geotrans)
+    gdal.RasterizeLayer(mask_ds, [1], shp_layer, burn_values=[1])
+    mask = mask_ds.ReadAsArray()
+    ts = 0
+    for r in range(int(row_h)):
+        for c in range(int(col_w)):
+            ts += 1
+            print("总块数：" + str(int(row_h) * int(col_w)) + ",现在是第：" + str(ts) + "块")
+            x_block, y_block = block_n, block_n
+            if c == int(col_w) - 1:
+                x_block = im_width - c * block_n
+            if r == int(row_h) - 1:
+                y_block = im_height - r * block_n
+            xoff = c * block_n
+            yoff = r * block_n
+            split_item = dataset.ReadAsArray(xoff=xoff, yoff=yoff, xsize=x_block,
+                                             ysize=y_block).astype(np.float16)
+            mask_block = mask[yoff:yoff + y_block, xoff:xoff + x_block] 
+            mask_block = np.broadcast_to(mask_block, split_item.shape)
+            split_item[mask_block == 1] = 0
+
+            if np.any(mask_block):
+                r_anchor = yoff
+                y_anchor = xoff
+                flag = split_item.sum(axis=0)
+                id1, id2 = np.where(flag != 0)
+                x_data = split_item[:, id1, id2].T
+                where_are_nan = np.isnan(x_data)
+                where_are_inf = np.isinf(x_data)
+                x_data[where_are_nan] = 0
+                x_data[where_are_inf] = 0
+                pred = model.predict(x_data)
+                lab_mats[r_anchor + id1, y_anchor + id2] = pred
+    lab_mats[np.isnan(lab_mats)] = 3
+    return lab_mats, im_geotrans, im_proj
+def write_tif(mat, save_path, im_geotrans, im_proj):
+    datatype = gdal.GDT_Byte
+    mat = mat.astype(np.uint8)
+    im_height, im_width = mat.shape[:2]
+    driver = gdal.GetDriverByName("GTiff")
+    dataset = driver.Create(save_path, im_width, im_height, 1, datatype, options=["TILED=YES", "COMPRESS=LZW"])
+    dataset.SetGeoTransform(im_geotrans)
+    dataset.SetProjection(im_proj)
+    dataset.GetRasterBand(1).WriteArray(mat)
+    print("succesfull")
+def load_model(model_path):
+    import pickle
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
+    return model
+if __name__ == '__main__':
+    pred_path = r'E:/DL_MC_05month_data/DL_RF_data/band_merge.tif'
+    model_path = r'E:/DL_MC_05month_data/DL_RF_data/feaCol_result_2022.pickle'
+    shp_path = r'E:/DL_MC_05month_data/DL_RF_data/bound_Output.shp'
+    res_path = r'E:/DL_MC_05month_data/DL_RF_data/clasfcation_2022.tif'
+    print("========================================>")
+    model = load_model(model_path)
+    lab_mats, im_geotrans, im_proj = pred_model(pred_path, model, shp_path)
+    write_tif(lab_mats, res_path, im_geotrans, im_proj)
