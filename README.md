@@ -79,7 +79,7 @@ print('kappa\n', kappa_value)
 with open(SavePath, "wb") as file:
     pickle.dump(classifier, file)
 
-#
+#Data extraction
 import numpy as np
 from osgeo import gdal, ogr
 def pred_model(tif_path, model, shp_path):
